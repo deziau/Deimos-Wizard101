@@ -51,12 +51,13 @@ TOTAL_ROUNDS = 5
 
 
 class DanceBot:
-    def __init__(self):
+    def __init__(self, confidence=CONFIDENCE_THRESHOLD):
         self.running = False
         self.paused = True
         self.templates = {}
         self.game_region = None
         self.arrow_region = None
+        self.confidence = confidence
         self.sct = mss.mss()
         self._load_templates()
 
@@ -90,7 +91,9 @@ class DanceBot:
         img = np.array(self.sct.grab(monitor))
         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
-    def _find_template(self, screenshot, template, threshold=CONFIDENCE_THRESHOLD):
+    def _find_template(self, screenshot, template, threshold=None):
+        if threshold is None:
+            threshold = self.confidence
         """Find all occurrences of a template in a screenshot."""
         result = cv2.matchTemplate(screenshot, template, cv2.TM_CCOEFF_NORMED)
         locations = np.where(result >= threshold)
@@ -446,10 +449,7 @@ def main():
         return
 
     # Normal run mode
-    global CONFIDENCE_THRESHOLD
-    CONFIDENCE_THRESHOLD = args.confidence
-
-    bot = DanceBot()
+    bot = DanceBot(confidence=args.confidence)
 
     region_config = TEMPLATES_DIR / "region.txt"
     if region_config.exists():
