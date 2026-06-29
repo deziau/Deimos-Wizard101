@@ -184,39 +184,68 @@ class DanceBot:
         return len(arrows) > 0
 
     def play_dance_game(self):
-        """Play a full dance game (5 rounds)."""
+        """
+        Play a full dance game.
+
+        Flow per round:
+          1. Display phase: arrows appear on screen (variable count)
+          2. Arrows disappear and "Go!" appears
+          3. Input phase: press the arrows in order (feedback arrows appear on screen)
+          4. Brief pause, then next round starts
+
+        The bot continuously scans during the display phase, keeping track of
+        the last stable set of arrows. When arrows disappear (Go!), it plays
+        the last detected sequence. After pressing keys, it waits long enough
+        for the input feedback arrows to clear before scanning for the next round.
+        """
         print("\n  Starting dance game...")
 
-        for round_num in range(1, TOTAL_ROUNDS + 1):
+        round_num = 0
+
+        while round_num < TOTAL_ROUNDS:
             if not self.running or self.paused:
                 print("  Bot paused/stopped.")
                 return False
 
+            round_num += 1
             print(f"\n  Round {round_num}/{TOTAL_ROUNDS}:")
 
-            # Wait for arrows to appear (display phase)
-            print("    Waiting for arrows to appear...")
-            arrows = []
+            # Phase 1: Wait for arrows to appear (display phase)
+            # Keep scanning and updating the detected arrows until they stabilize
+            print("    Watching for arrows...")
+            last_arrows = []
+            stable_count = 0
             attempts = 0
-            max_attempts = 200  # 10 seconds max wait
-            while len(arrows) < round_num and attempts < max_attempts:
+            max_attempts = 300  # 15 seconds max wait
+
+            while attempts < max_attempts:
                 if not self.running or self.paused:
                     return False
-                arrows = self.detect_arrows()
-                if len(arrows) < round_num:
-                    time.sleep(SCAN_INTERVAL)
-                    attempts += 1
 
-            if len(arrows) < round_num:
-                print(f"    Warning: Expected {round_num} arrows, detected {len(arrows)}")
-                if not arrows:
-                    print("    No arrows detected, skipping round")
-                    continue
+                current = self.detect_arrows()
 
-            print(f"    Detected {len(arrows)} arrows: {' '.join(a.upper() for a in arrows)}")
+                if len(current) > 0:
+                    if current == last_arrows:
+                        stable_count += 1
+                    else:
+                        last_arrows = current
+                        stable_count = 0
 
-            # Wait for arrows to disappear (Go! signal)
-            print("    Waiting for input phase...")
+                    # Arrows are stable for ~0.25s — display phase is likely complete
+                    if stable_count >= 5:
+                        break
+
+                time.sleep(SCAN_INTERVAL)
+                attempts += 1
+
+            if not last_arrows:
+                print("    No arrows detected, game may have ended")
+                break
+
+            print(f"    Detected {len(last_arrows)} arrows: {' '.join(a.upper() for a in last_arrows)}")
+
+            # Phase 2: Wait for arrows to disappear (Go! signal)
+            print("    Waiting for Go!...")
             disappear_attempts = 0
             while disappear_attempts < 200:
                 if not self.running or self.paused:
@@ -224,17 +253,22 @@ class DanceBot:
                 current = self.detect_arrows()
                 if len(current) == 0:
                     break
+                # Keep updating in case more arrows appear during display
+                if len(current) > len(last_arrows):
+                    last_arrows = current
+                    print(f"    Updated: {len(last_arrows)} arrows: {' '.join(a.upper() for a in last_arrows)}")
                 time.sleep(SCAN_INTERVAL)
                 disappear_attempts += 1
 
             # Small delay after Go! appears
             time.sleep(POST_GO_DELAY)
 
-            # Play the sequence
-            self.play_round(arrows)
+            # Phase 3: Press the arrows
+            self.play_round(last_arrows)
 
-            # Wait before next round
-            time.sleep(0.5)
+            # Phase 4: Wait for input feedback arrows to clear before next round
+            # This prevents confusing your input feedback with the next round's display
+            time.sleep(1.5)
 
         print("\n  Dance game complete!")
         return True
